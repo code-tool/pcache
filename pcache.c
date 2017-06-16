@@ -30,6 +30,7 @@
 #include "ncx_shm.h"
 #include "ncx_lock.h"
 #include "list.h"
+#include "util.h"
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -60,8 +61,8 @@ struct pcache_cache {
     struct list_head hash;
     struct list_head lru;
     long             expire;
-    u_char           key_size;
-    u_short          val_size;
+    int              key_size;
+    int              val_size;
     char             data[0];
 };
 
@@ -77,8 +78,8 @@ struct pcache_status {
 static ncx_shm_t cache_shm;
 static ncx_slab_pool_t *cache_pool;
 
-static struct list_head *cache_buckets;
 static ncx_atomic_t *cache_lock;
+static struct list_head *cache_buckets;
 static struct list_head *cache_lru_queue;
 static struct pcache_status *cache_status;
 
@@ -98,6 +99,7 @@ const zend_function_entry pcache_functions[] = {
     PHP_FE(pcache_set,    NULL)
     PHP_FE(pcache_get,    NULL)
     PHP_FE(pcache_del,    NULL)
+    PHP_FE(pcache_keys,   NULL)
     {NULL, NULL, NULL}    /* Must be the last line in pcache_functions[] */
 };
 /* }}} */
@@ -277,7 +279,7 @@ PHP_MINIT_FUNCTION(pcache)
         goto failed;
     }
 
-    ncx_memzero(cache_lock, sizeof(ncx_atomic_t));
+    //ncx_memzero(cache_lock, sizeof(ncx_atomic_t));
 
     /* alloc cache buckets */
     cache_buckets = ncx_slab_alloc_locked(cache_pool,
@@ -291,8 +293,7 @@ PHP_MINIT_FUNCTION(pcache)
     }
 
     /* alloc LRU queue leader */
-    cache_lru_queue = ncx_slab_alloc_locked(cache_pool,
-                        sizeof(struct list_head));
+    cache_lru_queue = ncx_slab_alloc_locked(cache_pool, sizeof(struct list_head));
     if (!cache_lru_queue) {
         goto failed;
     }
@@ -300,17 +301,16 @@ PHP_MINIT_FUNCTION(pcache)
     INIT_LIST_HEAD(cache_lru_queue);
 
     /* alloc cache status struct */
-    cache_status = ncx_slab_alloc_locked(cache_pool,
-                        sizeof(struct pcache_status));
+    cache_status = ncx_slab_alloc_locked(cache_pool, sizeof(struct pcache_status));
     if (!cache_status) {
         goto failed;
     }
 
-    cache_status.miss  = 0;
-    cache_status.hits  = 0;
-    cache_status.fails = 0;
-    cache_status.oom   = 0;
-    cache_status.used  = 0;
+    cache_status->miss  = 0;
+    cache_status->hits  = 0;
+    cache_status->fails = 0;
+    cache_status->oom   = 0;
+    cache_status->used  = 0;
 
     /* get cpu's core number */
     pcache_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
@@ -394,7 +394,7 @@ void pcache_try_run_gc(int overflow)
 
     ncx_shmtx_lock(cache_lock);
 
-    if (cache_status.used + overflow < cache_gc_threshold) {
+    if (cache_status->used + overflow < cache_gc_threshold) {
         ncx_shmtx_unlock(cache_lock);
         return;
     }
@@ -409,7 +409,7 @@ void pcache_try_run_gc(int overflow)
 
         ncx_slab_free(cache_pool, item);
 
-        cache_status.used -= size;
+        cache_status->used -= size;
         overflow -= size;
 
         if (overflow <= 0) {
@@ -437,7 +437,7 @@ void pcache_flush_all()
 
         ncx_slab_free(cache_pool, item);
 
-        cache_status.used -= size;
+        cache_status->used -= size;
     }
 }
 
@@ -451,7 +451,7 @@ PHP_FUNCTION(pcache_set)
     long expire = 0;
     pcache_cache_t *item, *temp;
     struct list_head *head, *curr, *next;
-    int index;
+    long index;
     int nsize;
 
     if (!cache_enable) {
@@ -501,11 +501,11 @@ PHP_FUNCTION(pcache_set)
     if (!item) {
         ncx_shmtx_lock(cache_lock);
 
-        cache_status.fails++;
+        cache_status->fails++;
 
-        if (++cache_status.oom >= 10) {
+        if (++cache_status->oom >= 10) {
             pcache_flush_all();
-            cache_status.oom = 0;
+            cache_status->oom = 0;
         }
 
         ncx_shmtx_unlock(cache_lock);
@@ -515,7 +515,7 @@ PHP_FUNCTION(pcache_set)
 
     /* init item fields */
 
-    item->next = NULL;
+    //item->next = NULL;
     item->expire = expire;
     item->key_size = key_len;
     item->val_size = val_len;
@@ -546,13 +546,87 @@ PHP_FUNCTION(pcache_set)
     list_add(&item->hash, head);            /* add to hashtable */
     list_add(&item->lru, cache_lru_queue);  /* add to LRU queue */
 
-    cache_status.used += nsize;
+    cache_status->used += nsize;
 
     ncx_shmtx_unlock(cache_lock);
 
     RETURN_TRUE;
 }
 
+PHP_FUNCTION(pcache_keys)
+{
+    char *key = NULL;
+    int key_len;
+
+    if (!cache_enable) {
+        RETURN_FALSE;
+    }
+
+#if PHP_VERSION_ID >= 70000
+
+    zend_string *pkey;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+    key = ZSTR_VAL(pkey);
+    key_len = ZSTR_LEN(pkey);
+
+#else
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &key, &key_len) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+#endif
+
+    struct list_head *head, *curr;
+    pcache_cache_t *item;
+    long now = (long)time(NULL);
+
+    array_init(return_value);
+
+    ncx_shmtx_lock(cache_lock);
+
+    int i;
+    for (i = 0; i < buckets_size; i++) {
+        head = &cache_buckets[i];
+
+        list_for_each(curr, head) {
+            item = list_entry(curr, pcache_cache_t, hash);
+
+            /* expire */
+            if (item->expire > 0 && item->expire <= now) {
+                cache_status->used -= (item->key_size + item->val_size + sizeof(pcache_cache_t));
+
+                list_del(&item->lru);
+                list_del(&item->hash);
+                ncx_slab_free(cache_pool, item);
+
+                continue;
+            }
+
+            if (0 == string_match_len(key, key_len, item->data, item->key_size, 1)) {
+                continue;
+            }
+
+            char *retval = NULL;
+
+            /* copy key to user space */
+            retval = emalloc(item->key_size + 1);
+
+            if (retval) {
+                memcpy(retval, item->data,  item->key_size);
+                retval[item->key_size] = 0;
+
+                add_next_index_stringl(return_value, retval, item->key_size);
+            }
+        }
+    }
+
+    ncx_shmtx_unlock(cache_lock);
+}
 
 PHP_FUNCTION(pcache_get)
 {
@@ -561,7 +635,7 @@ PHP_FUNCTION(pcache_get)
     struct list_head *head, *curr;
     pcache_cache_t *item;
     int index;
-    int found = 0;
+    bool found = false;
     int retlen = 0;
     char *retval = NULL;
 
@@ -603,49 +677,49 @@ PHP_FUNCTION(pcache_get)
         if (item->key_size == key_len &&
             !memcmp(item->data, key, key_len))
         {
-            found = 1;
+            found = true;
             break;
         }
     }
 
-    if (found) {
-        if (item->expire > 0 && item->expire <= (long)time(NULL)) { /* expire */
-            cache_status.miss++;
-            cache_status.used -=
-                (item->key_size + item->val_size + sizeof(pcache_cache_t));
+    if (!found) {
+        cache_status->miss++;
+        ncx_shmtx_unlock(cache_lock);
 
-            list_del(&item->lru);
-            list_del(&item->hash);
-            ncx_slab_free(cache_pool, item);
+        RETURN_FALSE;
+    }
 
-        } else {
-            /* move item to LRU head */
-            list_del(&item->lru);
-            list_add(&item->lru, cache_lru_queue);
+    if (item->expire > 0 && item->expire <= (long)time(NULL)) { /* expire */
+        cache_status->miss++;
+        cache_status->used -=
+            (item->key_size + item->val_size + sizeof(pcache_cache_t));
 
-            /* copy value to user space */
-            retlen = item->val_size;
-            retval = emalloc(retlen + 1);
+        list_del(&item->lru);
+        list_del(&item->hash);
+        ncx_slab_free(cache_pool, item);
+    } else {
+        /* move item to LRU head */
+        list_del(&item->lru);
+        list_add(&item->lru, cache_lru_queue);
 
-            if (retval) {
-                memcpy(retval, item->data + item->key_size, retlen);
-                retval[retlen] = 0;
-            }
+        /* copy value to user space */
+        retlen = item->val_size;
+        retval = emalloc(retlen + 1);
 
-            cache_status.hits++;
+        if (retval) {
+            memcpy(retval, item->data + item->key_size, retlen);
+            retval[retlen] = 0;
         }
 
-    } else {
-        cache_status.miss++;
+        cache_status->hits++;
     }
 
     ncx_shmtx_unlock(cache_lock);
-
     if (retval) {
         _RETURN_STRINGL(retval, retlen);
-    } else {
-        RETURN_FALSE;
     }
+
+    RETURN_FALSE;
 }
 
 
@@ -696,7 +770,7 @@ PHP_FUNCTION(pcache_del)
         if (key_len == item->key_size &&
             !memcmp(key, item->data, key_len))
         {
-            cache_status.used -=
+            cache_status->used -=
                 (item->key_size + item->val_size + sizeof(pcache_cache_t));
 
             list_del(&item->hash);

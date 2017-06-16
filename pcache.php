@@ -1,9 +1,15 @@
 <?php
 
-pcache_set($key, $value);
+$key = 'test';
+$value = 'val2';
+for ($i = 0; $i < 100; $i++) {
+    pcache_set('key' . $i, "$i");
+}
 
+var_dump(pcache_keys('key859*'));
+/*
 $value = pcache_get($key);
-
-pcache_del($key);
-
-?>
+var_dump(pcache_keys('key*'));
+var_dump($value, pcache_del($key));
+var_dump(pcache_get($key));
+sleep(100);*/
