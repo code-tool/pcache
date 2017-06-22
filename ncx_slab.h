@@ -33,6 +33,8 @@ typedef struct {
 void ncx_slab_init(ncx_slab_pool_t *pool);
 void *ncx_slab_alloc(ncx_slab_pool_t *pool, size_t size);
 void *ncx_slab_alloc_locked(ncx_slab_pool_t *pool, size_t size);
+void *ncx_slab_realloc(ncx_slab_pool_t *pool, void *p, size_t old_size, size_t new_size);
+void *ncx_slab_realloc_locked(ncx_slab_pool_t *pool, void *p, size_t old_size, size_t new_size);
 void ncx_slab_free(ncx_slab_pool_t *pool, void *p);
 void ncx_slab_free_locked(ncx_slab_pool_t *pool, void *p);
 

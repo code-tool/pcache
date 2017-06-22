@@ -31,6 +31,8 @@
 #include "ncx_lock.h"
 #include "list.h"
 #include "util.h"
+#include "trie.h"
+#include "trie_storage.h"
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -75,8 +77,7 @@ struct pcache_status {
 };
 
 /* True global resources - no need for thread safety here */
-static ncx_shm_t cache_shm;
-static ncx_slab_pool_t *cache_pool;
+static trie *cache_trie;
 
 static ncx_atomic_t *cache_lock;
 static struct list_head *cache_buckets;
@@ -97,6 +98,7 @@ int pcache_ncpu;
  */
 const zend_function_entry pcache_functions[] = {
     PHP_FE(pcache_set,    NULL)
+    PHP_FE(pcache_set2,    NULL)
     PHP_FE(pcache_get,    NULL)
     PHP_FE(pcache_del,    NULL)
     PHP_FE(pcache_keys,   NULL)
@@ -243,7 +245,6 @@ PHP_INI_END()
  */
 PHP_MINIT_FUNCTION(pcache)
 {
-    void *space;
     int i;
 
     REGISTER_INI_ENTRIES();
@@ -257,21 +258,14 @@ PHP_MINIT_FUNCTION(pcache)
         return FAILURE;
     }
 
-    cache_shm.size = cache_size;
-
-    if (ncx_shm_alloc(&cache_shm) == -1) { /* alloc share memory */
+    if (!storage_init(cache_size)) {
         return FAILURE;
     }
 
-    space = (void *) cache_shm.addr;
-
-    cache_pool = (ncx_slab_pool_t *) space;
-
-    cache_pool->addr = space;
-    cache_pool->min_shift = 3;
-    cache_pool->end = space + cache_size;
-
-    ncx_slab_init(cache_pool); /* init slab */
+    cache_trie = trie_create();
+    if (!cache_trie) {
+        goto failed;
+    }
 
     /* alloc cache lock */
     cache_lock = ncx_slab_alloc_locked(cache_pool, sizeof(ncx_atomic_t));
@@ -279,11 +273,8 @@ PHP_MINIT_FUNCTION(pcache)
         goto failed;
     }
 
-    //ncx_memzero(cache_lock, sizeof(ncx_atomic_t));
-
     /* alloc cache buckets */
-    cache_buckets = ncx_slab_alloc_locked(cache_pool,
-                        sizeof(struct list_head) * buckets_size);
+    cache_buckets = ncx_slab_alloc_locked(cache_pool, sizeof(struct list_head) * buckets_size);
     if (!cache_buckets) {
         goto failed;
     }
@@ -305,7 +296,6 @@ PHP_MINIT_FUNCTION(pcache)
     if (!cache_status) {
         goto failed;
     }
-
     cache_status->miss  = 0;
     cache_status->hits  = 0;
     cache_status->fails = 0;
@@ -439,6 +429,34 @@ void pcache_flush_all()
 
         cache_status->used -= size;
     }
+}
+
+PHP_FUNCTION(pcache_set2)
+{
+    if (!cache_enable) {
+        RETURN_FALSE;
+    }
+
+    char *key = NULL, *val = NULL;
+    int key_len, val_len;
+    long expire = 0;
+    long index;
+    int nsize;
+
+    zend_string *pkey, *pval;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "SS|l",
+                              &pkey, &pval, &expire) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+    key = ZSTR_VAL(pkey);
+    key_len = ZSTR_LEN(pkey);
+
+    val = ZSTR_VAL(pval);
+    val_len = ZSTR_LEN(pval);
+
+    RETURN_BOOL(0 == trie_insert(cache_trie, key, val))
 }
 
 

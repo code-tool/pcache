@@ -23,6 +23,10 @@ set(SOURCE_FILES
         pcache.c
         php_pcache.h
         util.c
-        util.h)
+        util.h
+        trie.c
+        trie.h
+        trie_storage.c
+        trie_storage.h)
 
-add_library(pcache ${SOURCE_FILES})
+add_library(pcache SHARED ${SOURCE_FILES})
