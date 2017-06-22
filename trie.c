@@ -246,7 +246,7 @@ static inline int
 buffer_init(struct buffer *b, const char *prefix) {
     b->fill = strlen(prefix);
     b->size = b->fill > 256 ? b->fill * 2 : 256;
-    b->buffer = storage_malloc(b->size);
+    b->buffer = emalloc(b->size);
     if (b->buffer != NULL)
         strcpy(b->buffer, prefix);
     return b->buffer == NULL ? -1 : 0;

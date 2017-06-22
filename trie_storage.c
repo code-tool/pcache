@@ -25,10 +25,16 @@ extern bool storage_init(ncx_uint_t cache_size) {
 
 
 extern void *storage_malloc(size_t size) {
-    return ncx_slab_alloc(cache_pool, size);
+    void *ptr = ncx_slab_alloc(cache_pool, size);
+
+//    printf("malloc %p %d\n", ptr, size);
+
+    return ptr;
 }
 
 extern void *storage_realloc(void *ptr, size_t old_size, size_t new_size) {
+//    printf("realloc %p %d -> %d\n", ptr, old_size, new_size);
+
     return ncx_slab_realloc(cache_pool, ptr, old_size, new_size);
 }
 

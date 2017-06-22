@@ -139,6 +139,7 @@ ncx_slab_realloc_locked(ncx_slab_pool_t *pool, void *p, size_t old_size, size_t 
     void *t;
 
     t = ncx_slab_alloc_locked(pool, new_size);
+    old_size = ncx_slab_size(pool, p);
     memcpy(t, p, old_size);
     ncx_slab_free_locked(pool, p);
 
@@ -395,6 +396,71 @@ ncx_slab_free(ncx_slab_pool_t *pool, void *p) {
     ncx_shmtx_lock(&pool->mutex);
     ncx_slab_free_locked(pool, p);
     ncx_shmtx_unlock(&pool->mutex);
+}
+
+size_t
+ncx_slab_size(ncx_slab_pool_t *pool, void *p) {
+    size_t size;
+    uintptr_t slab, m;
+    ncx_uint_t n, type, shift, map;
+    ncx_slab_page_t *slots, *page;
+
+    if ((u_char *) p < pool->start || (u_char *) p > pool->end) {
+        return 0;
+    }
+
+    n = ((u_char *) p - pool->start) >> ncx_pagesize_shift;
+    page = &pool->pages[n];
+    slab = page->slab;
+    type = page->prev & NCX_SLAB_PAGE_MASK;
+
+    switch (type) {
+
+        case NCX_SLAB_SMALL:
+
+            shift = slab & NCX_SLAB_SHIFT_MASK;
+            size = 1 << shift;
+
+            if ((uintptr_t) p & (size - 1)) {
+                return 0;
+            }
+
+            return size;
+
+        case NCX_SLAB_EXACT:
+
+            m = (uintptr_t) 1 <<
+                              (((uintptr_t) p & (ncx_pagesize - 1)) >> ncx_slab_exact_shift);
+            size = ncx_slab_exact_size;
+
+            if ((uintptr_t) p & (size - 1)) {
+                return 0;
+            }
+
+            return size;
+
+        case NCX_SLAB_BIG:
+
+            shift = slab & NCX_SLAB_SHIFT_MASK;
+            size = 1 << shift;
+
+            if ((uintptr_t) p & (size - 1)) {
+                return 0;
+            }
+            return size;
+
+        case NCX_SLAB_PAGE:
+
+            if ((uintptr_t) p & (ncx_pagesize - 1)) {
+                return 0;
+            }
+
+            if (slab == NCX_SLAB_PAGE_FREE) {
+                return 0;
+            }
+
+            return slab & ~NCX_SLAB_PAGE_START;
+    }
 }
 
 

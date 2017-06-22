@@ -100,6 +100,7 @@ const zend_function_entry pcache_functions[] = {
     PHP_FE(pcache_set,    NULL)
     PHP_FE(pcache_set2,    NULL)
     PHP_FE(pcache_get,    NULL)
+    PHP_FE(pcache_get2,    NULL)
     PHP_FE(pcache_del,    NULL)
     PHP_FE(pcache_keys,   NULL)
     {NULL, NULL, NULL}    /* Must be the last line in pcache_functions[] */
@@ -438,10 +439,8 @@ PHP_FUNCTION(pcache_set2)
     }
 
     char *key = NULL, *val = NULL;
-    int key_len, val_len;
+    size_t key_len, val_len;
     long expire = 0;
-    long index;
-    int nsize;
 
     zend_string *pkey, *pval;
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "SS|l",
@@ -456,7 +455,19 @@ PHP_FUNCTION(pcache_set2)
     val = ZSTR_VAL(pval);
     val_len = ZSTR_LEN(pval);
 
-    RETURN_BOOL(0 == trie_insert(cache_trie, key, val))
+    char *shared_key = storage_malloc(key_len + 1);
+    memcpy(shared_key, key, key_len);
+    shared_key[key_len] = '\0';
+
+    char *shared_val = storage_malloc(val_len + 1);
+    memcpy(shared_val, val, val_len);
+    shared_val[val_len] = '\0';
+
+    bool r_val = 0 == trie_insert(cache_trie, shared_key, shared_val);
+
+    //printf("%d\n", (int)trie_count(cache_trie, ""));
+
+    RETURN_BOOL(r_val)
 }
 
 
@@ -644,6 +655,39 @@ PHP_FUNCTION(pcache_keys)
     }
 
     ncx_shmtx_unlock(cache_lock);
+}
+
+PHP_FUNCTION(pcache_get2)
+{
+    if (!cache_enable) {
+        RETURN_FALSE;
+    }
+
+    char *key = NULL;
+    int key_len;
+    size_t retlen = 0;
+    char *retval = NULL;
+
+    zend_string *pkey, *pval;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S",
+                              &pkey) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+    key = ZSTR_VAL(pkey);
+    key_len = ZSTR_LEN(pkey);
+
+    char *item = trie_search(cache_trie, key);
+    if (!item) {
+        RETURN_FALSE
+    }
+
+    retlen = strlen(item);
+    retval = emalloc(retlen + 1);
+    memcpy(retval, item, retlen);
+    retval[retlen] = '\0';
+
+    _RETURN_STRINGL(retval, retlen);
 }
 
 PHP_FUNCTION(pcache_get)
