@@ -53,9 +53,14 @@ struct pcache_cache_item {
     char *val;
 };
 
+struct pcache_status {
+    long trie_size;
+};
+
 /* True global resources - no need for thread safety here */
 static trie *cache_trie;
 static ncx_atomic_t *cache_lock;
+static struct pcache_status *cache_status;
 /* configure entries */
 static ncx_uint_t cache_size = 10485760; /* 10MB */
 static int cache_enable = 1;
@@ -70,7 +75,8 @@ const zend_function_entry pcache_functions[] = {
         PHP_FE(pcache_set, NULL)
         PHP_FE(pcache_get, NULL)
         PHP_FE(pcache_del, NULL)
-        PHP_FE(pcache_keys, NULL)
+        PHP_FE(pcache_search, NULL)
+        PHP_FE(pcache_info, NULL)
         {NULL, NULL, NULL}    /* Must be the last line in pcache_functions[] */
 };
 /* }}} */
@@ -182,6 +188,15 @@ PHP_MINIT_FUNCTION (pcache) {
         ncx_shm_free(&cache_shm);
         return FAILURE;
     }
+
+    /* alloc cache status struct */
+    cache_status = ncx_slab_alloc_locked(cache_pool, sizeof(struct pcache_status));
+    if (!cache_status) {
+        ncx_shm_free(&cache_shm);
+        return FAILURE;
+    }
+
+    cache_status->trie_size  = trie_size(cache_trie);
 
     /* get cpu's core number */
     pcache_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
@@ -356,7 +371,7 @@ int visitor_search(const char *key, void *data, void *arg) {
     return 0;
 }
 
-PHP_FUNCTION (pcache_keys) {
+PHP_FUNCTION (pcache_search) {
     if (!cache_enable) {
         RETURN_FALSE;
     }
@@ -375,6 +390,16 @@ PHP_FUNCTION (pcache_keys) {
     trie_visit(cache_trie, key_pattern, visitor_search, return_value);
 
     ncx_shmtx_unlock(cache_lock);
+}
+
+PHP_FUNCTION (pcache_info) {
+    if (!cache_enable) {
+        RETURN_FALSE;
+    }
+
+    array_init(return_value);
+
+    add_assoc_long(return_value, "trie_size", trie_size(cache_trie));
 }
 
 /*

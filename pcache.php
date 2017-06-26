@@ -15,4 +15,6 @@ for ($i = 0; $i < $length; $i++) {
 
 sleep(1);
 
-var_dump(pcache_keys('key5'));
+var_dump(pcache_search('key5'));
+
+var_dump(pcache_info());
