@@ -25,13 +25,13 @@ extern bool storage_init(ncx_uint_t cache_size) {
 
 
 extern void *storage_malloc(size_t size) {
-    return ncx_slab_alloc(cache_pool, size);
+    return ncx_slab_alloc_locked(cache_pool, size);
 }
 
 extern void *storage_realloc(void *ptr, size_t new_size) {
-    return ncx_slab_realloc(cache_pool, ptr, new_size);
+    return ncx_slab_realloc_locked(cache_pool, ptr, new_size);
 }
 
 extern void storage_free(void *ptr) {
-    ncx_slab_free(cache_pool, ptr);
+    ncx_slab_free_locked(cache_pool, ptr);
 }

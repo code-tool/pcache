@@ -55,7 +55,7 @@ struct pcache_cache_item {
 
 /* True global resources - no need for thread safety here */
 static trie *cache_trie;
-
+static ncx_atomic_t *cache_lock;
 /* configure entries */
 static ncx_uint_t cache_size = 10485760; /* 10MB */
 static int cache_enable = 1;
@@ -176,6 +176,13 @@ PHP_MINIT_FUNCTION (pcache) {
         return FAILURE;
     }
 
+    /* alloc cache lock */
+    cache_lock = ncx_slab_alloc_locked(cache_pool, sizeof(ncx_atomic_t));
+    if (!cache_lock) {
+        ncx_shm_free(&cache_shm);
+        return FAILURE;
+    }
+
     /* get cpu's core number */
     pcache_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
     if (pcache_ncpu <= 0) {
@@ -245,20 +252,34 @@ PHP_FUNCTION (pcache_set) {
     val_len = ZSTR_LEN(pval);
 
     if (expire > 0) {
-        expire += (long)time(NULL); /* update expire time */
+        expire += (long) time(NULL); /* update expire time */
     }
 
+    ncx_shmtx_lock(cache_lock);
+
     shared_val = storage_malloc(val_len + 1);
+    if (!shared_val) {
+        ncx_shmtx_unlock(cache_lock);
+
+        RETURN_FALSE;
+    }
     memcpy(shared_val, val, val_len);
     shared_val[val_len] = '\0';
 
     item_len = sizeof(pcache_cache_item);
     shared_item = storage_malloc(item_len);
+    if (!shared_item) {
+        ncx_shmtx_unlock(cache_lock);
+
+        RETURN_FALSE;
+    }
     memcpy(shared_item, shared_item, item_len);
     shared_item->expire = expire;
     shared_item->val = shared_val;
 
     bool r_val = 0 == trie_insert(cache_trie, key, shared_item);
+
+    ncx_shmtx_unlock(cache_lock);
 
     RETURN_BOOL(r_val)
 }
@@ -279,8 +300,12 @@ PHP_FUNCTION (pcache_get) {
     }
     key = ZSTR_VAL(pkey);
 
+    ncx_shmtx_lock(cache_lock);
+
     item = trie_search(cache_trie, key);
     if (!item) {
+        ncx_shmtx_unlock(cache_lock);
+
         RETURN_NULL()
     }
 
@@ -288,6 +313,8 @@ PHP_FUNCTION (pcache_get) {
     retval = emalloc(retlen + 1);
     memcpy(retval, item->val, retlen);
     retval[retlen] = '\0';
+
+    ncx_shmtx_unlock(cache_lock);
 
     _RETURN_STRINGL(retval, retlen);
 }
@@ -305,7 +332,11 @@ PHP_FUNCTION (pcache_del) {
     }
     key = ZSTR_VAL(pkey);
 
+    ncx_shmtx_lock(cache_lock);
+
     bool r_val = 0 == trie_remove(cache_trie, key);
+
+    ncx_shmtx_unlock(cache_lock);
 
     RETURN_BOOL(r_val)
 }
@@ -339,7 +370,11 @@ PHP_FUNCTION (pcache_keys) {
 
     array_init(return_value);
 
+    ncx_shmtx_lock(cache_lock);
+
     trie_visit(cache_trie, key_pattern, visitor_search, return_value);
+
+    ncx_shmtx_unlock(cache_lock);
 }
 
 /*
