@@ -235,6 +235,10 @@ trie_insert(trie *trie, const char *key, void *data) {
     return trie_replace(trie, key, identity, data);
 }
 
+int trie_remove(trie *trie, const char *key) {
+    return trie_replace(trie, key, identity, NULL);
+}
+
 /* Mini buffer library. */
 
 struct buffer {

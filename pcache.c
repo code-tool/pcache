@@ -245,7 +245,7 @@ PHP_FUNCTION (pcache_set) {
     val_len = ZSTR_LEN(pval);
 
     if (expire > 0) {
-        expire += (long) time(NULL); /* update expire time */
+        expire += (long)time(NULL); /* update expire time */
     }
 
     shared_val = storage_malloc(val_len + 1);
@@ -258,7 +258,9 @@ PHP_FUNCTION (pcache_set) {
     shared_item->expire = expire;
     shared_item->val = shared_val;
 
-    RETURN_BOOL(trie_insert(cache_trie, key, shared_item));
+    bool r_val = 0 == trie_insert(cache_trie, key, shared_item);
+
+    RETURN_BOOL(r_val)
 }
 
 PHP_FUNCTION (pcache_get) {
@@ -303,7 +305,9 @@ PHP_FUNCTION (pcache_del) {
     }
     key = ZSTR_VAL(pkey);
 
-    RETURN_BOOL(trie_insert(cache_trie, key, NULL));
+    bool r_val = 0 == trie_remove(cache_trie, key);
+
+    RETURN_BOOL(r_val)
 }
 
 int visitor_search(const char *key, void *data, void *arg) {
