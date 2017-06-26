@@ -46,19 +46,16 @@
 
 #endif
 
-struct pcache_status {
-    int miss;
-    int hits;
-    int fails;
-    int oom;
-    int used;
+typedef struct pcache_cache_item pcache_cache_item;
+
+struct pcache_cache_item {
+    long expire;
+    size_t val_size;
+    char *val;
 };
 
 /* True global resources - no need for thread safety here */
 static trie *cache_trie;
-
-static ncx_atomic_t *cache_lock;
-static struct pcache_status *cache_status;
 
 /* configure entries */
 static ncx_uint_t cache_size = 10485760; /* 10MB */
@@ -176,25 +173,9 @@ PHP_MINIT_FUNCTION (pcache) {
 
     cache_trie = trie_create();
     if (!cache_trie) {
-        goto failed;
+        ncx_shm_free(&cache_shm);
+        return FAILURE;
     }
-
-    /* alloc cache lock */
-    cache_lock = ncx_slab_alloc_locked(cache_pool, sizeof(ncx_atomic_t));
-    if (!cache_lock) {
-        goto failed;
-    }
-
-    /* alloc cache status struct */
-    cache_status = ncx_slab_alloc_locked(cache_pool, sizeof(struct pcache_status));
-    if (!cache_status) {
-        goto failed;
-    }
-    cache_status->miss = 0;
-    cache_status->hits = 0;
-    cache_status->fails = 0;
-    cache_status->oom = 0;
-    cache_status->used = 0;
 
     /* get cpu's core number */
     pcache_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
@@ -203,11 +184,6 @@ PHP_MINIT_FUNCTION (pcache) {
     }
 
     return SUCCESS;
-
-    failed:
-
-    ncx_shm_free(&cache_shm);
-    return FAILURE;
 }
 /* }}} */
 
@@ -273,9 +249,7 @@ PHP_FUNCTION (pcache_set) {
     memcpy(shared_val, val, val_len);
     shared_val[val_len] = '\0';
 
-    bool r_val = 0 == trie_insert(cache_trie, key, shared_val);
-
-    RETURN_BOOL(r_val)
+    RETURN_BOOL(trie_insert(cache_trie, key, shared_val));
 }
 
 PHP_FUNCTION (pcache_get) {
@@ -319,14 +293,7 @@ PHP_FUNCTION (pcache_del) {
     }
     key = ZSTR_VAL(pkey);
 
-    char *item = trie_search(cache_trie, key);
-    if (!item) {
-        RETURN_FALSE
-    }
-
-    bool r_val = 0 == trie_insert(cache_trie, key, NULL);
-
-    RETURN_BOOL(r_val)
+    RETURN_BOOL(trie_insert(cache_trie, key, NULL));
 }
 
 int visitor_search(const char *key, void *data, void *arg)
