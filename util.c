@@ -124,6 +124,33 @@ int string_match_len(const char *pattern, int patternLen,
     return 0;
 }
 
-int stringmatch(const char *pattern, const char *string, int nocase) {
-    return string_match_len(pattern, strlen(pattern), string, strlen(string), nocase);
+void pcache_atoi(const char *str, int *ret, int *len) {
+    const char *ptr = str;
+    char ch;
+    int absolute = 1;
+    int rlen, result;
+
+    ch = *ptr;
+
+    if (ch == '-') {
+        absolute = -1;
+        ++ptr;
+    } else if (ch == '+') {
+        absolute = 1;
+        ++ptr;
+    }
+
+    for (rlen = 0, result = 0; *ptr != '\0'; ptr++) {
+        ch = *ptr;
+
+        if (ch >= '0' && ch <= '9') {
+            result = result * 10 + (ch - '0');
+            rlen++;
+        } else {
+            break;
+        }
+    }
+
+    if (ret) *ret = absolute * result;
+    if (len) *len = rlen;
 }

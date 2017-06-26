@@ -3,4 +3,6 @@
 
 int string_match_len(const char *p, int plen, const char *s, int slen, int nocase);
 
-#endif //PCACHE_UTIL_H
+void pcache_atoi(const char *str, int *ret, int *len);
+
+#endif

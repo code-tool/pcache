@@ -28,6 +28,7 @@
 #include "php_pcache.h"
 #include "ncx_slab.h"
 #include "ncx_shm.h"
+#include "util.h"
 #include "trie.h"
 #include "trie_storage.h"
 
@@ -103,39 +104,6 @@ zend_module_entry pcache_module_entry = {
 ZEND_GET_MODULE(pcache)
 #endif
 
-
-void pcache_atoi(const char *str, int *ret, int *len) {
-    const char *ptr = str;
-    char ch;
-    int absolute = 1;
-    int rlen, result;
-
-    ch = *ptr;
-
-    if (ch == '-') {
-        absolute = -1;
-        ++ptr;
-    } else if (ch == '+') {
-        absolute = 1;
-        ++ptr;
-    }
-
-    for (rlen = 0, result = 0; *ptr != '\0'; ptr++) {
-        ch = *ptr;
-
-        if (ch >= '0' && ch <= '9') {
-            result = result * 10 + (ch - '0');
-            rlen++;
-        } else {
-            break;
-        }
-    }
-
-    if (ret) *ret = absolute * result;
-    if (len) *len = rlen;
-}
-
-
 ZEND_INI_MH(pcache_set_enable) {
     if (NEW_VALUE_LEN == 0) {
         return FAILURE;
@@ -196,7 +164,6 @@ PHP_INI_END()
 /* {{{ PHP_MINIT_FUNCTION
  */
 PHP_MINIT_FUNCTION (pcache) {
-    int i;
 
     REGISTER_INI_ENTRIES();
 
@@ -295,7 +262,7 @@ PHP_FUNCTION (pcache_set) {
     }
 
     char *key = NULL, *val = NULL;
-    size_t key_len, val_len;
+    size_t val_len;
     long expire = 0;
 
     zend_string *pkey, *pval;
@@ -315,21 +282,6 @@ PHP_FUNCTION (pcache_set) {
     bool r_val = 0 == trie_insert(cache_trie, key, shared_val);
 
     RETURN_BOOL(r_val)
-}
-
-PHP_FUNCTION (pcache_keys) {
-    if (!cache_enable) {
-        RETURN_FALSE;
-    }
-    char *key = NULL;
-    zend_string *pkey;
-
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey) == FAILURE) {
-        RETURN_FALSE;
-    }
-    key = ZSTR_VAL(pkey);
-
-    array_init(return_value);
 }
 
 PHP_FUNCTION (pcache_get) {
@@ -381,6 +333,21 @@ PHP_FUNCTION (pcache_del) {
     bool r_val = 0 == trie_insert(cache_trie, key, NULL);
 
     RETURN_BOOL(r_val)
+}
+
+PHP_FUNCTION (pcache_keys) {
+    if (!cache_enable) {
+        RETURN_FALSE;
+    }
+    char *key = NULL;
+    zend_string *pkey;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey) == FAILURE) {
+        RETURN_FALSE;
+    }
+    key = ZSTR_VAL(pkey);
+
+    array_init(return_value);
 }
 
 /*
