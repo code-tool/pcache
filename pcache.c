@@ -53,14 +53,9 @@ struct pcache_cache_item {
     char *val;
 };
 
-struct pcache_status {
-    long trie_size;
-};
-
 /* True global resources - no need for thread safety here */
 static trie *cache_trie;
 static ncx_atomic_t *cache_lock;
-static struct pcache_status *cache_status;
 /* configure entries */
 static ncx_uint_t cache_size = 10485760; /* 10MB */
 static int cache_enable = 1;
@@ -188,15 +183,6 @@ PHP_MINIT_FUNCTION (pcache) {
         ncx_shm_free(&cache_shm);
         return FAILURE;
     }
-
-    /* alloc cache status struct */
-    cache_status = ncx_slab_alloc_locked(cache_pool, sizeof(struct pcache_status));
-    if (!cache_status) {
-        ncx_shm_free(&cache_shm);
-        return FAILURE;
-    }
-
-    cache_status->trie_size  = trie_size(cache_trie);
 
     /* get cpu's core number */
     pcache_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
@@ -399,7 +385,7 @@ PHP_FUNCTION (pcache_info) {
 
     array_init(return_value);
 
-    add_assoc_long(return_value, "trie_size", trie_size(cache_trie));
+    add_assoc_long(return_value, "trie_size", (zend_long)trie_size(cache_trie));
 }
 
 /*
