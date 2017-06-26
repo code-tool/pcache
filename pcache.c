@@ -301,7 +301,7 @@ PHP_FUNCTION (pcache_get) {
 
     char *item = trie_search(cache_trie, key);
     if (!item) {
-        RETURN_FALSE
+        RETURN_NULL()
     }
 
     retlen = strlen(item);
