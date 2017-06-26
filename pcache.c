@@ -62,7 +62,6 @@ static struct pcache_status *cache_status;
 
 /* configure entries */
 static ncx_uint_t cache_size = 10485760; /* 10MB */
-static int cache_gc_threshold;
 static int cache_enable = 1;
 
 int pcache_ncpu;
@@ -169,11 +168,6 @@ PHP_MINIT_FUNCTION (pcache) {
 
     if (!cache_enable) {
         return SUCCESS;
-    }
-
-    cache_gc_threshold = cache_size * 0.9;
-    if (cache_gc_threshold <= 0) {
-        return FAILURE;
     }
 
     if (!storage_init(cache_size)) {
@@ -335,19 +329,36 @@ PHP_FUNCTION (pcache_del) {
     RETURN_BOOL(r_val)
 }
 
+int visitor_search(const char *key, void *data, void *arg)
+{
+    size_t retlen = 0;
+    char *retval = NULL;
+
+    retlen = strlen(data);
+    retval = emalloc(retlen + 1);
+    memcpy(retval, data, retlen);
+    retval[retlen] = '\0';
+
+    add_assoc_stringl(arg, key, retval, retlen);
+
+    return 0;
+}
+
 PHP_FUNCTION (pcache_keys) {
     if (!cache_enable) {
         RETURN_FALSE;
     }
-    char *key = NULL;
-    zend_string *pkey;
+    char *key_pattern = NULL;
+    zend_string *pkey_pattern;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey_pattern) == FAILURE) {
         RETURN_FALSE;
     }
-    key = ZSTR_VAL(pkey);
+    key_pattern = ZSTR_VAL(pkey_pattern);
 
     array_init(return_value);
+
+    trie_visit(cache_trie, key_pattern, visitor_search, return_value);
 }
 
 /*

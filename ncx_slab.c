@@ -430,10 +430,8 @@ ncx_slab_size(ncx_slab_pool_t *pool, void *p) {
 
         case NCX_SLAB_EXACT:
 
-            m = (uintptr_t) 1 <<
-                              (((uintptr_t) p & (ncx_pagesize - 1)) >> ncx_slab_exact_shift);
+            m = (uintptr_t) 1 << (((uintptr_t) p & (ncx_pagesize - 1)) >> ncx_slab_exact_shift);
             size = ncx_slab_exact_size;
-
             if ((uintptr_t) p & (size - 1)) {
                 return 0;
             }
@@ -444,10 +442,10 @@ ncx_slab_size(ncx_slab_pool_t *pool, void *p) {
 
             shift = slab & NCX_SLAB_SHIFT_MASK;
             size = 1 << shift;
-
             if ((uintptr_t) p & (size - 1)) {
                 return 0;
             }
+
             return size;
 
         case NCX_SLAB_PAGE:
@@ -455,13 +453,14 @@ ncx_slab_size(ncx_slab_pool_t *pool, void *p) {
             if ((uintptr_t) p & (ncx_pagesize - 1)) {
                 return 0;
             }
-
             if (slab == NCX_SLAB_PAGE_FREE) {
                 return 0;
             }
 
             return slab & ~NCX_SLAB_PAGE_START;
     }
+
+    return 0;
 }
 
 
