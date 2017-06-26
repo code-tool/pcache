@@ -6,7 +6,7 @@ for ($i = 0; $i < $length; $i++) {
 
     $key = $keyPrefix. $i;
 
-    pcache_set($key, "$i");
+    pcache_set($key, "$i", 90);
 
     var_dump(pcache_get($key));
     //var_dump(pcache_del($key));

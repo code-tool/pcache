@@ -50,7 +50,6 @@ typedef struct pcache_cache_item pcache_cache_item;
 
 struct pcache_cache_item {
     long expire;
-    size_t val_size;
     char *val;
 };
 
@@ -231,9 +230,10 @@ PHP_FUNCTION (pcache_set) {
         RETURN_FALSE;
     }
 
-    char *key = NULL, *val = NULL;
-    size_t val_len;
+    char *key = NULL, *val = NULL, *shared_val = NULL;
+    size_t val_len, item_len;
     long expire = 0;
+    pcache_cache_item *shared_item;
 
     zend_string *pkey, *pval;
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "SS|l", &pkey, &pval, &expire) == FAILURE) {
@@ -241,15 +241,24 @@ PHP_FUNCTION (pcache_set) {
     }
 
     key = ZSTR_VAL(pkey);
-
     val = ZSTR_VAL(pval);
     val_len = ZSTR_LEN(pval);
 
-    char *shared_val = storage_malloc(val_len + 1);
+    if (expire > 0) {
+        expire += (long) time(NULL); /* update expire time */
+    }
+
+    shared_val = storage_malloc(val_len + 1);
     memcpy(shared_val, val, val_len);
     shared_val[val_len] = '\0';
 
-    RETURN_BOOL(trie_insert(cache_trie, key, shared_val));
+    item_len = sizeof(pcache_cache_item);
+    shared_item = storage_malloc(item_len);
+    memcpy(shared_item, shared_item, item_len);
+    shared_item->expire = expire;
+    shared_item->val = shared_val;
+
+    RETURN_BOOL(trie_insert(cache_trie, key, shared_item));
 }
 
 PHP_FUNCTION (pcache_get) {
@@ -261,20 +270,21 @@ PHP_FUNCTION (pcache_get) {
     size_t retlen = 0;
     char *retval = NULL;
     zend_string *pkey;
+    pcache_cache_item *item;
 
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey) == FAILURE) {
         RETURN_FALSE;
     }
     key = ZSTR_VAL(pkey);
 
-    char *item = trie_search(cache_trie, key);
+    item = trie_search(cache_trie, key);
     if (!item) {
         RETURN_NULL()
     }
 
-    retlen = strlen(item);
+    retlen = strlen(item->val);
     retval = emalloc(retlen + 1);
-    memcpy(retval, item, retlen);
+    memcpy(retval, item->val, retlen);
     retval[retlen] = '\0';
 
     _RETURN_STRINGL(retval, retlen);
@@ -296,14 +306,14 @@ PHP_FUNCTION (pcache_del) {
     RETURN_BOOL(trie_insert(cache_trie, key, NULL));
 }
 
-int visitor_search(const char *key, void *data, void *arg)
-{
+int visitor_search(const char *key, void *data, void *arg) {
     size_t retlen = 0;
     char *retval = NULL;
+    pcache_cache_item *item = data;
 
-    retlen = strlen(data);
+    retlen = strlen(item->val);
     retval = emalloc(retlen + 1);
-    memcpy(retval, data, retlen);
+    memcpy(retval, item->val, retlen);
     retval[retlen] = '\0';
 
     add_assoc_stringl(arg, key, retval, retlen);
