@@ -9,7 +9,7 @@ for ($i = 0; $i < $length; $i++) {
     pcache_set($key, "$i");
 
     var_dump(pcache_get($key));
-    //var_dump(pcache_del($key));
+    var_dump(pcache_del($key));
     //var_dump(pcache_get($key));
 }
 

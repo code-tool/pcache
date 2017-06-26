@@ -114,8 +114,7 @@ trie_free(trie *trie) {
 /* Core search functions. */
 
 static size_t
-binary_search(trie *self, trie **child,
-              struct trieptr **ptr, const char *key) {
+binary_search(trie *self, trie **child, struct trieptr **ptr, const char *key) {
     size_t i = 0;
     bool found = true;
     *ptr = NULL;
@@ -235,8 +234,20 @@ trie_insert(trie *trie, const char *key, void *data) {
     return trie_replace(trie, key, identity, data);
 }
 
-int trie_remove(trie *trie, const char *key) {
-    return trie_replace(trie, key, identity, NULL);
+int trie_remove(trie *self, const char *key) {
+    trie *last;
+    struct trieptr *parent;
+    size_t depth = binary_search(self, &last, &parent, key);
+    if (key[depth] != '\0') {
+        return 0;
+    }
+
+    last->data = identity(key, last->data, NULL);
+    if(0 == last->nchildren){
+        storage_free(last);
+    }
+
+    return 0;
 }
 
 /* Mini buffer library. */
