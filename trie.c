@@ -160,7 +160,7 @@ grow(trie *self) {
     if (size > 255)
         size = 255;
     size_t children_size = sizeof(struct trieptr) * size;
-    trie *resized = storage_realloc(self, self->size, sizeof(*self) + children_size);
+    trie *resized = storage_realloc(self, sizeof(*self) + children_size);
     if (resized == NULL)
         return NULL;
     resized->size = size;

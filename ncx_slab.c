@@ -135,8 +135,9 @@ ncx_slab_alloc(ncx_slab_pool_t *pool, size_t size) {
 }
 
 void *
-ncx_slab_realloc_locked(ncx_slab_pool_t *pool, void *p, size_t old_size, size_t new_size) {
+ncx_slab_realloc_locked(ncx_slab_pool_t *pool, void *p, size_t new_size) {
     void *t;
+    size_t old_size;
 
     t = ncx_slab_alloc_locked(pool, new_size);
     old_size = ncx_slab_size(pool, p);
@@ -147,9 +148,9 @@ ncx_slab_realloc_locked(ncx_slab_pool_t *pool, void *p, size_t old_size, size_t 
 }
 
 void *
-ncx_slab_realloc(ncx_slab_pool_t *pool, void *p, size_t old_size, size_t new_size) {
+ncx_slab_realloc(ncx_slab_pool_t *pool, void *p, size_t new_size) {
     ncx_shmtx_lock(&pool->mutex);
-    p = ncx_slab_realloc_locked(pool, p, old_size, new_size);
+    p = ncx_slab_realloc_locked(pool, p, new_size);
     ncx_shmtx_unlock(&pool->mutex);
 
     return p;

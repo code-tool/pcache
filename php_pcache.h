@@ -43,9 +43,7 @@ PHP_RSHUTDOWN_FUNCTION(pcache);
 PHP_MINFO_FUNCTION(pcache);
 
 PHP_FUNCTION(pcache_set);
-PHP_FUNCTION(pcache_set2);
 PHP_FUNCTION(pcache_get);
-PHP_FUNCTION(pcache_get2);
 PHP_FUNCTION(pcache_del);
 PHP_FUNCTION(pcache_keys);
 
