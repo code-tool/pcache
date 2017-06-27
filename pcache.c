@@ -31,6 +31,7 @@
 #include "util.h"
 #include "trie.h"
 #include "trie_storage.h"
+#include "list.h"
 
 #if PHP_VERSION_ID >= 70000
 
@@ -56,6 +57,7 @@ struct pcache_cache_item {
 /* True global resources - no need for thread safety here */
 static trie *cache_trie;
 static ncx_atomic_t *cache_lock;
+static struct list_head *cache_expire_queue;
 /* configure entries */
 static ncx_uint_t cache_size = 10485760; /* 10MB */
 static int cache_enable = 1;
@@ -184,6 +186,14 @@ PHP_MINIT_FUNCTION (pcache) {
         return FAILURE;
     }
 
+    /* alloc expire queue leader */
+    cache_expire_queue = ncx_slab_alloc_locked(cache_pool, sizeof(struct list_head));
+    if (!cache_expire_queue) {
+        ncx_shm_free(&cache_shm);
+        return FAILURE;
+    }
+    INIT_LIST_HEAD(cache_expire_queue);
+
     /* get cpu's core number */
     pcache_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
     if (pcache_ncpu <= 0) {
@@ -239,9 +249,9 @@ PHP_FUNCTION (pcache_set) {
     }
 
     char *key = NULL, *val = NULL, *shared_val = NULL;
-    size_t val_len, key_len, item_len;
+    size_t val_len = 0, key_len = 0, item_len = 0;
     long expire = 0;
-    pcache_cache_item *shared_item;
+    pcache_cache_item *shared_item = NULL, *item = NULL;
 
 #if PHP_VERSION_ID >= 70000
 
@@ -281,17 +291,21 @@ PHP_FUNCTION (pcache_set) {
     shared_val[val_len] = '\0';
 
     item_len = sizeof(pcache_cache_item);
+    item = emalloc(item_len);
+    item->expire = expire;
+    item->val = shared_val;
+
     shared_item = storage_malloc(item_len);
     if (!shared_item) {
         ncx_shmtx_unlock(cache_lock);
 
         RETURN_FALSE;
     }
-    memcpy(shared_item, shared_item, item_len);
-    shared_item->expire = expire;
-    shared_item->val = shared_val;
+    memcpy(shared_item, item, item_len);
 
     bool r_val = 0 == trie_insert(cache_trie, key, shared_item);
+
+    list_add(&item->expire, cache_expire_queue);
 
     ncx_shmtx_unlock(cache_lock);
 
@@ -306,7 +320,8 @@ PHP_FUNCTION (pcache_get) {
     char *key = NULL;
     size_t key_len = 0, retlen = 0;
     char *retval = NULL;
-    pcache_cache_item *item;
+    pcache_cache_item *item = NULL;
+    long now = (long)time(NULL);
 
 #if PHP_VERSION_ID >= 70000
 
@@ -335,6 +350,16 @@ PHP_FUNCTION (pcache_get) {
         RETURN_NULL()
     }
 
+    /* expire */
+    if (item->expire > 0 && item->expire <= now) {
+        storage_free(item->val);
+        storage_free(item);
+        trie_insert(cache_trie, key, NULL);
+        ncx_shmtx_unlock(cache_lock);
+
+        RETURN_NULL()
+    }
+
     retlen = strlen(item->val);
     retval = emalloc(retlen + 1);
     memcpy(retval, item->val, retlen);
@@ -352,7 +377,7 @@ PHP_FUNCTION (pcache_del) {
 
     char *key = NULL;
     size_t key_len = 0;
-    pcache_cache_item *item;
+    pcache_cache_item *item = NULL;
 
 #if PHP_VERSION_ID >= 70000
 
@@ -395,6 +420,16 @@ int visitor_search(const char *key, void *data, void *arg) {
     size_t retlen = 0;
     char *retval = NULL;
     pcache_cache_item *item = data;
+    long now = (long)time(NULL);
+
+    /* expire */
+    if (item->expire > 0 && item->expire <= now) {
+        storage_free(item->val);
+        storage_free(item);
+        trie_insert(cache_trie, key, NULL);
+
+        return 0;
+    }
 
     retlen = strlen(item->val);
     retval = emalloc(retlen + 1);
@@ -436,6 +471,26 @@ PHP_FUNCTION (pcache_search) {
     ncx_shmtx_lock(cache_lock);
 
     trie_visit(cache_trie, key_prefix, visitor_search, return_value);
+
+    ncx_shmtx_unlock(cache_lock);
+}
+
+void pcache_try_run_gc()
+{
+    pcache_cache_item *item;
+    struct list_head *curr, *prev;
+    long now = (long)time(NULL);
+
+    ncx_shmtx_lock(cache_lock);
+
+    list_for_each_prev_safe(curr, prev, cache_expire_queue) {
+        item = list_entry(curr, pcache_cache_item, expire);
+
+        list_del(&item->expire); /* delete from hashtable */
+
+        storage_free(item->val);
+        storage_free(item);
+    }
 
     ncx_shmtx_unlock(cache_lock);
 }
