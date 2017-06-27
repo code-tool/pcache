@@ -481,8 +481,6 @@ void pcache_try_run_gc()
     struct list_head *curr, *prev;
     long now = (long)time(NULL);
 
-    ncx_shmtx_lock(cache_lock);
-
     list_for_each_prev_safe(curr, prev, cache_expire_queue) {
         item = list_entry(curr, pcache_cache_item, expire);
 
@@ -491,8 +489,6 @@ void pcache_try_run_gc()
         storage_free(item->val);
         storage_free(item);
     }
-
-    ncx_shmtx_unlock(cache_lock);
 }
 
 PHP_FUNCTION (pcache_info) {
