@@ -178,7 +178,7 @@ PHP_MINIT_FUNCTION (pcache) {
     }
 
     /* alloc cache lock */
-    cache_lock = ncx_slab_alloc_locked(cache_pool, sizeof(ncx_atomic_t));
+    cache_lock = storage_malloc(sizeof(ncx_atomic_t));
     if (!cache_lock) {
         ncx_shm_free(&cache_shm);
         return FAILURE;
@@ -447,7 +447,7 @@ PHP_FUNCTION (pcache_info) {
 
     array_init(return_value);
 
-    add_assoc_long(return_value, "trie_size", (zend_long) trie_size(cache_trie));
+    add_assoc_long(return_value, "used", (zend_long)cache_pool->total_size);
 }
 
 /*
