@@ -239,9 +239,11 @@ PHP_FUNCTION (pcache_set) {
     }
 
     char *key = NULL, *val = NULL, *shared_val = NULL;
-    size_t val_len, item_len;
+    size_t val_len, key_len, item_len;
     long expire = 0;
     pcache_cache_item *shared_item;
+
+#if PHP_VERSION_ID >= 70000
 
     zend_string *pkey, *pval;
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "SS|l", &pkey, &pval, &expire) == FAILURE) {
@@ -249,8 +251,19 @@ PHP_FUNCTION (pcache_set) {
     }
 
     key = ZSTR_VAL(pkey);
+    key_len = ZSTR_LEN(pkey);
+
     val = ZSTR_VAL(pval);
     val_len = ZSTR_LEN(pval);
+
+#else
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|l", &key, &key_len, &val, &val_len, &expire) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+#endif
 
     if (expire > 0) {
         expire += (long) time(NULL); /* update expire time */
@@ -291,15 +304,27 @@ PHP_FUNCTION (pcache_get) {
     }
 
     char *key = NULL;
-    size_t retlen = 0;
+    size_t key_len = 0, retlen = 0;
     char *retval = NULL;
-    zend_string *pkey;
     pcache_cache_item *item;
 
+#if PHP_VERSION_ID >= 70000
+
+    zend_string *pkey;
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey) == FAILURE) {
         RETURN_FALSE;
     }
     key = ZSTR_VAL(pkey);
+    key_len = ZSTR_LEN(pkey);
+
+#else
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &key, &key_len) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+#endif
 
     ncx_shmtx_lock(cache_lock);
 
@@ -326,13 +351,26 @@ PHP_FUNCTION (pcache_del) {
     }
 
     char *key = NULL;
-    zend_string *pkey;
+    size_t key_len = 0;
     pcache_cache_item *item;
 
+#if PHP_VERSION_ID >= 70000
+
+    zend_string *pkey;
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey) == FAILURE) {
         RETURN_FALSE;
     }
     key = ZSTR_VAL(pkey);
+    key_len = ZSTR_LEN(pkey);
+
+#else
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &key, &key_len) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+#endif
 
     ncx_shmtx_lock(cache_lock);
 
@@ -372,19 +410,32 @@ PHP_FUNCTION (pcache_search) {
     if (!cache_enable) {
         RETURN_FALSE;
     }
-    char *key_pattern = NULL;
-    zend_string *pkey_pattern;
+    char *key_prefix = NULL;
+    size_t key_prefix_len = 0;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey_pattern) == FAILURE) {
+#if PHP_VERSION_ID >= 70000
+
+    zend_string *pkey_prefix;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey_prefix) == FAILURE) {
         RETURN_FALSE;
     }
-    key_pattern = ZSTR_VAL(pkey_pattern);
+    key_prefix = ZSTR_VAL(pkey_prefix);
+    key_prefix_len = ZSTR_LEN(pkey_prefix);
+
+#else
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &key_prefix, &key_prefix_len) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+#endif
 
     array_init(return_value);
 
     ncx_shmtx_lock(cache_lock);
 
-    trie_visit(cache_trie, key_pattern, visitor_search, return_value);
+    trie_visit(cache_trie, key_prefix, visitor_search, return_value);
 
     ncx_shmtx_unlock(cache_lock);
 }

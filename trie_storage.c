@@ -23,7 +23,6 @@ extern bool storage_init(ncx_uint_t cache_size) {
     return true;
 }
 
-
 extern void *storage_malloc(size_t size) {
     return ncx_slab_alloc_locked(cache_pool, size);
 }
