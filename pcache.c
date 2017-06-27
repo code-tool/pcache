@@ -186,8 +186,8 @@ PHP_MINIT_FUNCTION (pcache) {
         return FAILURE;
     }
 
-    /* alloc expire queue leader */
-    cache_expire_queue = ncx_slab_alloc_locked(cache_pool, sizeof(struct list_head));
+    /* alloc expire queue */
+    cache_expire_queue = storage_malloc(sizeof(struct list_head));
     if (!cache_expire_queue) {
         ncx_shm_free(&cache_shm);
         return FAILURE;
