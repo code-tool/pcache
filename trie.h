@@ -72,11 +72,6 @@ int trie_replace(trie *trie, const char *key, trie_replacer f, void *arg);
 int trie_visit(trie *trie, const char *prefix, trie_visitor v, void *arg);
 
 /**
- * @return 0 on success
- */
-int trie_remove(trie *trie, const char *key);
-
-/**
  * Count the number of entries with a given prefix. An empty prefix
  * counts the entire trie.
  * @return the number of entries matching PREFIX

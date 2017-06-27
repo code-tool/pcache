@@ -1,5 +1,5 @@
 <?php
-$length = 99612;
+$length = 100000;
 $keyPrefix = 'key';
 
 for ($i = 0; $i < $length; $i++) {

@@ -327,6 +327,7 @@ PHP_FUNCTION (pcache_del) {
 
     char *key = NULL;
     zend_string *pkey;
+    pcache_cache_item *item;
 
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "S", &pkey) == FAILURE) {
         RETURN_FALSE;
@@ -335,11 +336,21 @@ PHP_FUNCTION (pcache_del) {
 
     ncx_shmtx_lock(cache_lock);
 
-    bool r_val = 0 == trie_remove(cache_trie, key);
+    item = trie_search(cache_trie, key);
+    if (!item) {
+        ncx_shmtx_unlock(cache_lock);
+
+        RETURN_FALSE;
+    }
+
+    storage_free(item->val);
+    storage_free(item);
+
+    bool r_val = 0 == trie_insert(cache_trie, key, NULL);
 
     ncx_shmtx_unlock(cache_lock);
 
-    RETURN_BOOL(r_val)
+    RETURN_BOOL(r_val);
 }
 
 int visitor_search(const char *key, void *data, void *arg) {
@@ -385,7 +396,7 @@ PHP_FUNCTION (pcache_info) {
 
     array_init(return_value);
 
-    add_assoc_long(return_value, "trie_size", (zend_long)trie_size(cache_trie));
+    add_assoc_long(return_value, "trie_size", (zend_long) trie_size(cache_trie));
 }
 
 /*
