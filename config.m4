@@ -59,6 +59,5 @@ if test "$PHP_PCACHE" != "no"; then
   dnl
   dnl PHP_SUBST(PCACHE_SHARED_LIBADD)
 
-  dnl PHP_NEW_EXTENSION(pcache, pcache.c util.c ncx_lock.c ncx_shm.c ncx_slab.c, $ext_shared)
-  PHP_NEW_EXTENSION(pcache, pcache.c util.c ncx_lock.c ncx_shm.c ncx_slab.c trie_storage.c trie.c, $ext_shared)
+  PHP_NEW_EXTENSION(pcache, pcache.c util.c ncx_lock.c ncx_shm.c ncx_slab.c trie.c storage.c, $ext_shared)
 fi

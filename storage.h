@@ -1,5 +1,5 @@
-#ifndef PCACHE_TRIE_STORAGE_H
-#define PCACHE_TRIE_STORAGE_H
+#ifndef PCACHE_STORAGE_H
+#define PCACHE_STORAGE_H
 
 #include <stddef.h>
 #include "ncx_slab.h"

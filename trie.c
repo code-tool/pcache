@@ -5,7 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include "trie.h"
-#include "trie_storage.h"
+#include "storage.h"
 
 struct trieptr {
     trie *trie;

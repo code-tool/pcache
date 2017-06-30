@@ -26,7 +26,7 @@ set(SOURCE_FILES
         util.h
         trie.c
         trie.h
-        trie_storage.c
-        trie_storage.h)
+        storage.c
+        storage.h)
 
 add_library(pcache SHARED ${SOURCE_FILES})

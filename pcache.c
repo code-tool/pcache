@@ -30,7 +30,7 @@
 #include "ncx_shm.h"
 #include "util.h"
 #include "trie.h"
-#include "trie_storage.h"
+#include "storage.h"
 
 #if PHP_VERSION_ID >= 70000
 
@@ -305,7 +305,7 @@ PHP_FUNCTION (pcache_set) {
     bool r_val = 0 == trie_insert(cache_trie, key, shared_item);
 
     if (expire > 0) {
-        //add to expire queue
+
     }
 
     ncx_shmtx_unlock(cache_lock);

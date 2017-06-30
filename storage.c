@@ -1,4 +1,4 @@
-#include "trie_storage.h"
+#include "storage.h"
 
 extern bool storage_init(ncx_uint_t cache_size) {
     void *space;
