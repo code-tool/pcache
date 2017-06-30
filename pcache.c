@@ -31,7 +31,6 @@
 #include "util.h"
 #include "trie.h"
 #include "trie_storage.h"
-#include "list.h"
 
 #if PHP_VERSION_ID >= 70000
 
@@ -57,7 +56,6 @@ struct pcache_cache_item {
 /* True global resources - no need for thread safety here */
 static trie *cache_trie;
 static ncx_atomic_t *cache_lock;
-static struct list_head *cache_expire_queue;
 /* configure entries */
 static ncx_uint_t cache_size = 10485760; /* 10MB */
 static int cache_enable = 1;
@@ -186,14 +184,6 @@ PHP_MINIT_FUNCTION (pcache) {
         return FAILURE;
     }
 
-    /* alloc expire queue */
-    cache_expire_queue = storage_malloc(sizeof(struct list_head));
-    if (!cache_expire_queue) {
-        ncx_shm_free(&cache_shm);
-        return FAILURE;
-    }
-    INIT_LIST_HEAD(cache_expire_queue);
-
     /* get cpu's core number */
     pcache_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
     if (pcache_ncpu <= 0) {
@@ -240,8 +230,15 @@ PHP_MINFO_FUNCTION (pcache) {
 
     DISPLAY_INI_ENTRIES();
 }
-
 /* }}} */
+
+void pcache_try_run_gc()
+{
+    pcache_cache_item *item;
+    struct list_head *curr, *prev;
+    long now = (long)time(NULL);
+
+}
 
 PHP_FUNCTION (pcache_set) {
     if (!cache_enable) {
@@ -281,6 +278,8 @@ PHP_FUNCTION (pcache_set) {
 
     ncx_shmtx_lock(cache_lock);
 
+    pcache_try_run_gc();
+
     shared_val = storage_malloc(val_len + 1);
     if (!shared_val) {
         ncx_shmtx_unlock(cache_lock);
@@ -305,7 +304,9 @@ PHP_FUNCTION (pcache_set) {
 
     bool r_val = 0 == trie_insert(cache_trie, key, shared_item);
 
-    list_add(&item->expire, cache_expire_queue);
+    if (expire > 0) {
+        //add to expire queue
+    }
 
     ncx_shmtx_unlock(cache_lock);
 
@@ -473,22 +474,6 @@ PHP_FUNCTION (pcache_search) {
     trie_visit(cache_trie, key_prefix, visitor_search, return_value);
 
     ncx_shmtx_unlock(cache_lock);
-}
-
-void pcache_try_run_gc()
-{
-    pcache_cache_item *item;
-    struct list_head *curr, *prev;
-    long now = (long)time(NULL);
-
-    list_for_each_prev_safe(curr, prev, cache_expire_queue) {
-        item = list_entry(curr, pcache_cache_item, expire);
-
-        list_del(&item->expire); /* delete from hashtable */
-
-        storage_free(item->val);
-        storage_free(item);
-    }
 }
 
 PHP_FUNCTION (pcache_info) {
