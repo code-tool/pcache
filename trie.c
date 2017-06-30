@@ -104,7 +104,7 @@ trie_free(trie *trie) {
                 return errno;
             node->i++;
         } else {
-            storage_free(stack_pop(s));
+            storage_free(stack_pop(s), 0);
         }
     }
     stack_free(s);
@@ -160,8 +160,10 @@ grow(trie *self) {
         size = 255;
     size_t children_size = sizeof(struct trieptr) * size;
     trie *resized = storage_realloc(self, sizeof(*self) + children_size);
-    if (resized == NULL)
+    if (resized == NULL) {
+        size_t s = trie_size(self);
         return NULL;
+    }
     resized->size = size;
     return resized;
 }
@@ -215,7 +217,7 @@ trie_replace(trie *self, const char *key, trie_replacer f, void *arg) {
             return errno;
         trie *added = add(last, key[depth], subtrie);
         if (added == NULL) {
-            storage_free(subtrie);
+            storage_free(subtrie, 0);
             return errno;
         }
         if (parent != NULL) {

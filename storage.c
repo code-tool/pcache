@@ -25,21 +25,32 @@ extern bool storage_init(ncx_uint_t cache_size) {
 }
 
 extern void *storage_malloc(size_t size) {
-    cache_pool->total_size += size;
+    void *result = ncx_slab_alloc_locked(cache_pool, size);
 
-    return ncx_slab_alloc_locked(cache_pool, size);
+    if (result != NULL) {
+        cache_pool->total_size += ncx_slab_size(cache_pool, result);
+    }
+
+    return result;
 }
 
 extern void *storage_realloc(void *ptr, size_t new_size) {
     size_t old_size = ncx_slab_size(cache_pool, ptr);
-    cache_pool->total_size -= old_size;
-    cache_pool->total_size += new_size;
 
-    return ncx_slab_realloc_locked(cache_pool, ptr, old_size, new_size);
+    void *result = ncx_slab_realloc_locked(cache_pool, ptr, old_size, new_size);
+
+    if (result != NULL) {
+        cache_pool->total_size -= old_size;
+        cache_pool->total_size += new_size;
+    }
+
+    return result;
 }
 
-extern void storage_free(void *ptr) {
-    size_t size = ncx_slab_size(cache_pool, ptr);
+extern void storage_free(void *ptr, size_t size) {
+    if (size == 0) {
+        size = ncx_slab_size(cache_pool, ptr);
+    }
     cache_pool->total_size -= size;
     ncx_slab_free_locked(cache_pool, ptr);
 }

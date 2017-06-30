@@ -139,6 +139,9 @@ ncx_slab_realloc_locked(ncx_slab_pool_t *pool, void *p, size_t old_size, size_t 
     void *t;
 
     t = ncx_slab_alloc_locked(pool, new_size);
+    if (t == NULL) {
+        return NULL;
+    }
     memcpy(t, p, old_size);
     ncx_slab_free_locked(pool, p);
 

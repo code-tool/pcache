@@ -31,6 +31,7 @@
 #include "util.h"
 #include "trie.h"
 #include "storage.h"
+#include "list.h"
 
 #if PHP_VERSION_ID >= 70000
 
@@ -47,16 +48,17 @@
 #endif
 
 typedef struct pcache_cache_item pcache_cache_item;
-
 struct pcache_cache_item {
+    struct list_head hash;
     long expire;
-    char *val;
+    size_t data_len;
+    void *data_ptr;
 };
 
 /* True global resources - no need for thread safety here */
 static trie *cache_trie;
 static ncx_atomic_t *cache_lock;
-/* configure entries */
+static struct list_head *cache_expire;
 static ncx_uint_t cache_size = 10485760; /* 10MB */
 static int cache_enable = 1;
 
@@ -177,14 +179,19 @@ PHP_MINIT_FUNCTION (pcache) {
         return FAILURE;
     }
 
-    /* alloc cache lock */
     cache_lock = storage_malloc(sizeof(ncx_atomic_t));
     if (!cache_lock) {
         ncx_shm_free(&cache_shm);
         return FAILURE;
     }
 
-    /* get cpu's core number */
+    cache_expire = storage_malloc(sizeof(struct list_head));
+    if (!cache_expire) {
+        ncx_shm_free(&cache_shm);
+        return FAILURE;
+    }
+    INIT_LIST_HEAD(cache_expire);
+
     pcache_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
     if (pcache_ncpu <= 0) {
         pcache_ncpu = 1;
@@ -230,14 +237,23 @@ PHP_MINFO_FUNCTION (pcache) {
 
     DISPLAY_INI_ENTRIES();
 }
+
 /* }}} */
 
-void pcache_try_run_gc()
-{
+void pcache_try_run_gc() {
     pcache_cache_item *item;
-    struct list_head *curr, *prev;
-    long now = (long)time(NULL);
+    struct list_head *curr;
+    long now = (long) time(NULL);
 
+    list_for_each(curr, cache_expire) {
+        item = list_entry(curr, pcache_cache_item, hash);
+
+        if (item->expire > 0 && item->expire <= now) {
+            list_del(&item->hash);
+            storage_free(item->data_ptr, item->data_len);
+            storage_free(item, sizeof(struct pcache_cache_item));
+        }
+    }
 }
 
 PHP_FUNCTION (pcache_set) {
@@ -248,7 +264,7 @@ PHP_FUNCTION (pcache_set) {
     char *key = NULL, *val = NULL, *shared_val = NULL;
     size_t val_len = 0, key_len = 0, item_len = 0;
     long expire = 0;
-    pcache_cache_item *shared_item = NULL, *item = NULL;
+    pcache_cache_item *item = NULL;
 
 #if PHP_VERSION_ID >= 70000
 
@@ -265,7 +281,7 @@ PHP_FUNCTION (pcache_set) {
 
 #else
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|l", &key, &key_len, &val, &val_len, &expire) == FAILURE)
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|l", &key, &key_len, &data_ptr, &val_len, &expire) == FAILURE)
     {
         RETURN_FALSE;
     }
@@ -278,34 +294,35 @@ PHP_FUNCTION (pcache_set) {
 
     ncx_shmtx_lock(cache_lock);
 
-    pcache_try_run_gc();
+    //pcache_try_run_gc();
 
-    shared_val = storage_malloc(val_len + 1);
+    shared_val = storage_malloc(val_len);
     if (!shared_val) {
         ncx_shmtx_unlock(cache_lock);
 
         RETURN_FALSE;
     }
     memcpy(shared_val, val, val_len);
-    shared_val[val_len] = '\0';
 
-    item_len = sizeof(pcache_cache_item);
-    item = emalloc(item_len);
-    item->expire = expire;
-    item->val = shared_val;
-
-    shared_item = storage_malloc(item_len);
-    if (!shared_item) {
+    item = storage_malloc(sizeof(pcache_cache_item));
+    if (!item) {
+        storage_free(shared_val, val_len);
         ncx_shmtx_unlock(cache_lock);
 
         RETURN_FALSE;
     }
-    memcpy(shared_item, item, item_len);
+    item->expire = expire;
+    item->data_len = val_len;
+    item->data_ptr = shared_val;
 
-    bool r_val = 0 == trie_insert(cache_trie, key, shared_item);
-
-    if (expire > 0) {
-
+    bool r_val = 0 == trie_insert(cache_trie, key, item);
+    if (!r_val) {
+        storage_free(item->data_ptr, item->data_len);
+        storage_free(item, sizeof(struct pcache_cache_item));
+    } else {
+//        if (expire > 0) {
+//            list_add(&item->hash, cache_expire);
+//        }
     }
 
     ncx_shmtx_unlock(cache_lock);
@@ -322,7 +339,7 @@ PHP_FUNCTION (pcache_get) {
     size_t key_len = 0, retlen = 0;
     char *retval = NULL;
     pcache_cache_item *item = NULL;
-    long now = (long)time(NULL);
+    long now = (long) time(NULL);
 
 #if PHP_VERSION_ID >= 70000
 
@@ -353,22 +370,20 @@ PHP_FUNCTION (pcache_get) {
 
     /* expire */
     if (item->expire > 0 && item->expire <= now) {
-        storage_free(item->val);
-        storage_free(item);
+        storage_free(item->data_ptr, item->data_len);
+        storage_free(item, sizeof(struct pcache_cache_item));
         trie_insert(cache_trie, key, NULL);
         ncx_shmtx_unlock(cache_lock);
 
         RETURN_NULL()
     }
 
-    retlen = strlen(item->val);
-    retval = emalloc(retlen + 1);
-    memcpy(retval, item->val, retlen);
-    retval[retlen] = '\0';
+    retval = emalloc(item->data_len);
+    memcpy(retval, item->data_ptr, item->data_len);
 
     ncx_shmtx_unlock(cache_lock);
 
-    _RETURN_STRINGL(retval, retlen);
+    _RETURN_STRINGL(retval, item->data_len);
 }
 
 PHP_FUNCTION (pcache_del) {
@@ -407,8 +422,8 @@ PHP_FUNCTION (pcache_del) {
         RETURN_FALSE;
     }
 
-    storage_free(item->val);
-    storage_free(item);
+    storage_free(item->data_ptr, item->data_len);
+    storage_free(item, sizeof(struct pcache_cache_item));
 
     bool r_val = 0 == trie_insert(cache_trie, key, NULL);
 
@@ -421,21 +436,20 @@ int visitor_search(const char *key, void *data, void *arg) {
     size_t retlen = 0;
     char *retval = NULL;
     pcache_cache_item *item = data;
-    long now = (long)time(NULL);
+    long now = (long) time(NULL);
 
     /* expire */
     if (item->expire > 0 && item->expire <= now) {
-        storage_free(item->val);
-        storage_free(item);
+        storage_free(item->data_ptr, item->data_len);
+        storage_free(item, sizeof(struct pcache_cache_item));
         trie_insert(cache_trie, key, NULL);
 
         return 0;
     }
 
-    retlen = strlen(item->val);
-    retval = emalloc(retlen + 1);
-    memcpy(retval, item->val, retlen);
-    retval[retlen] = '\0';
+    retlen = item->data_len;
+    retval = emalloc(item->data_len);
+    memcpy(retval, item->data_ptr, item->data_len);
 
     add_assoc_stringl(arg, key, retval, retlen);
 
@@ -483,7 +497,9 @@ PHP_FUNCTION (pcache_info) {
 
     array_init(return_value);
 
-    add_assoc_long(return_value, "used", (zend_long)cache_pool->total_size);
+    add_assoc_long(return_value, "mem_used", (zend_long) cache_pool->total_size);
+    add_assoc_long(return_value, "trie_mem_used", (zend_long) trie_size(cache_trie));
+    add_assoc_long(return_value, "trie_count", (zend_long) trie_count(cache_trie, ""));
 }
 
 /*

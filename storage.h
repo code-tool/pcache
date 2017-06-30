@@ -14,6 +14,6 @@ extern void *storage_malloc(size_t size);
 
 extern void *storage_realloc(void *ptr, size_t new_size);
 
-extern void storage_free(void *ptr);
+extern void storage_free(void *ptr, size_t size);
 
 #endif
