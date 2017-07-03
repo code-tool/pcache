@@ -59,7 +59,7 @@ struct pcache_cache_item {
 static trie *cache_trie;
 static ncx_atomic_t *cache_lock;
 static struct list_head *cache_expire;
-static ncx_uint_t cache_size = 10485760; /* 10MB */
+static ncx_uint_t cache_size = 104857600; /* 100MB */
 static int cache_enable = 1;
 
 int pcache_ncpu;
@@ -152,7 +152,7 @@ ZEND_INI_MH(pcache_set_cache_size) {
 }
 
 PHP_INI_BEGIN()
-                PHP_INI_ENTRY("pcache.cache_size", "10485760", PHP_INI_SYSTEM,
+                PHP_INI_ENTRY("pcache.cache_size", "104857600", PHP_INI_SYSTEM,
                               pcache_set_cache_size)
                 PHP_INI_ENTRY("pcache.enable", "1", PHP_INI_SYSTEM,
                               pcache_set_enable)

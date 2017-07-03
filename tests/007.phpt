@@ -1,4 +1,9 @@
-<?php
+--TEST--
+Compare with apcu
+--SKIPIF--
+<?php if (!extension_loaded("pcache") || !extension_loaded("apcu") ) print "skip"; ?>
+--FILE--
+<?php 
 $length = 100000;
 $keyPrefix = 'keyasdasdasdksdfdsfswifhjuhasddxsfdasg';
 $timePcache = 0;
@@ -19,3 +24,5 @@ $end = microtime(true);
 $timeApcu = $end - $start;
 
 echo sprintf("Pcache:%f, APCu:%f", $timePcache, $timeApcu);
+?>
+--EXPECTF--
