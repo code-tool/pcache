@@ -104,7 +104,8 @@ trie_free(trie *trie) {
                 return errno;
             node->i++;
         } else {
-            storage_free(stack_pop(s), 0);
+            struct trie *curr = stack_pop(s);
+            storage_free(curr, (sizeof(*curr) +  sizeof(*curr->children) * curr->size));
         }
     }
     stack_free(s);
@@ -159,9 +160,8 @@ grow(trie *self) {
     if (size > 255)
         size = 255;
     size_t children_size = sizeof(struct trieptr) * size;
-    trie *resized = storage_realloc(self, sizeof(*self) + children_size);
+    trie *resized = storage_realloc(self, (sizeof(*self) +  sizeof(*self->children) * self->size), sizeof(*self) + children_size);
     if (resized == NULL) {
-        size_t s = trie_size(self);
         return NULL;
     }
     resized->size = size;
@@ -177,8 +177,9 @@ static trie *
 add(trie *self, int c, trie *child) {
     if (self->size == self->nchildren) {
         self = grow(self);
-        if (self == NULL)
+        if (self == NULL){
             return NULL;
+        }
     }
     int i = self->nchildren++;
     self->children[i].c = c;
@@ -191,8 +192,9 @@ static trie *
 create(void) {
     int size = 1;
     trie *trie = storage_malloc(sizeof(*trie) + sizeof(struct trieptr) * size);
-    if (trie == NULL)
+    if (trie == NULL){
         return NULL;
+    }
     trie->size = size;
     trie->nchildren = 0;
     trie->data = NULL;
@@ -213,11 +215,12 @@ trie_replace(trie *self, const char *key, trie_replacer f, void *arg) {
     size_t depth = binary_search(self, &last, &parent, key);
     while (key[depth] != '\0') {
         trie *subtrie = create();
-        if (subtrie == NULL)
+        if (subtrie == NULL){
             return errno;
+        }
         trie *added = add(last, key[depth], subtrie);
         if (added == NULL) {
-            storage_free(subtrie, 0);
+            storage_free(subtrie, (sizeof(*subtrie) +  sizeof(*subtrie->children) * subtrie->size));
             return errno;
         }
         if (parent != NULL) {

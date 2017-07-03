@@ -12,7 +12,7 @@ extern bool storage_init(ncx_uint_t cache_size);
 
 extern void *storage_malloc(size_t size);
 
-extern void *storage_realloc(void *ptr, size_t new_size);
+extern void *storage_realloc(void *ptr, size_t old_size, size_t new_size);
 
 extern void storage_free(void *ptr, size_t size);
 

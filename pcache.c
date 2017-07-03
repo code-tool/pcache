@@ -118,11 +118,11 @@ ZEND_INI_MH(pcache_set_enable) {
 
 
 ZEND_INI_MH(pcache_set_cache_size) {
-    int len;
-
     if (NEW_VALUE_LEN == 0) {
         return FAILURE;
     }
+
+    int len;
 
     pcache_atoi((const char *) NEW_VALUE, (int *) &cache_size, &len);
 
@@ -316,18 +316,22 @@ PHP_FUNCTION (pcache_set) {
     item->data_ptr = shared_val;
 
     bool r_val = 0 == trie_insert(cache_trie, key, item);
-    if (!r_val) {
+    if (r_val == false) {
         storage_free(item->data_ptr, item->data_len);
         storage_free(item, sizeof(struct pcache_cache_item));
-    } else {
-//        if (expire > 0) {
-//            list_add(&item->hash, cache_expire);
-//        }
+
+        ncx_shmtx_unlock(cache_lock);
+
+        RETURN_FALSE;
     }
+
+//    if (expire > 0) {
+//        list_add(&item->hash, cache_expire);
+//    }
 
     ncx_shmtx_unlock(cache_lock);
 
-    RETURN_BOOL(r_val)
+    RETURN_TRUE
 }
 
 PHP_FUNCTION (pcache_get) {
