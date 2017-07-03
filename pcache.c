@@ -469,7 +469,9 @@ PHP_FUNCTION (pcache_del) {
         RETURN_FALSE;
     }
 
-    list_del(&item->hash);
+    if(item->hash.prev != NULL && item->hash.next != NULL){
+        list_del(&item->hash);
+    }
     storage_free(item->data_ptr, item->data_len);
     storage_free(item, sizeof(struct pcache_cache_item));
     bool r_val = 0 == trie_insert(cache_trie, key, NULL);

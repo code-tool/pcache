@@ -8,12 +8,13 @@ $key = "foo";
 $value = "dummy";
 
 var_dump(pcache_set($key, $value));
-
-var_dump(pcache_info());
+$cacheInfo = pcache_info();
+var_dump(array_key_exists('mem_used',$cacheInfo));
+var_dump(array_key_exists('trie_mem_used',$cacheInfo));
+var_dump(array_key_exists('trie_count',$cacheInfo));
 ?>
 --EXPECTF--
 bool(true)
-array(1) {
-  ["used"]=>
-  int(4218)
-}
+bool(true)
+bool(true)
+bool(true)
