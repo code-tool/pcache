@@ -1,6 +1,6 @@
 <?php
 $length = 100000;
-$keyPrefix = 'keyasdasdasdksdfdsfswifhjuhasddxsfdasg';
+$keyPrefix = 'keyveryveryveryveryveryveryveryveryveryveryveryveryverylong';
 $timePcache = 0;
 $timeApcu = 0;
 
