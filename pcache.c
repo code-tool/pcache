@@ -240,21 +240,63 @@ PHP_MINFO_FUNCTION (pcache) {
 
 /* }}} */
 
+void print_cache_expire() {
+    pcache_cache_item *item;
+    struct list_head *curr, *next;
+    printf("---------------------------\n");
+    list_for_each_safe(curr, next, cache_expire) {
+        item = list_entry(curr, pcache_cache_item, hash);
+        printf("%s %ld \n", (char *) item->data_ptr, item->expire);
+    }
+    printf("---------------------------\n");
+}
+
 void pcache_try_run_gc() {
     pcache_cache_item *item;
-    struct list_head *curr, *prev;
+    struct list_head *curr, *next;
     long now = (long) time(NULL);
 
-    list_for_each_prev_safe(curr, prev, cache_expire) {
+    list_for_each_safe(curr, next, cache_expire) {
         item = list_entry(curr, pcache_cache_item, hash);
-
-        if (item->expire > 0 && item->expire <= now) {
+        if (item->expire <= now) {
             list_del(&item->hash);
             storage_free(item->data_ptr, item->data_len);
             storage_free(item, sizeof(struct pcache_cache_item));
+//            trie_insert(cache_trie, item->key, NULL);
+            continue;
         }
+        break;
     }
 }
+
+bool pcache_add_to_expire(pcache_cache_item *new_item) {
+    pcache_cache_item *curr_item = NULL, *next_item = NULL;
+    struct list_head *curr, *next;
+
+    if (list_empty(cache_expire)) {
+        list_add(&new_item->hash, cache_expire);
+
+        return true;
+    }
+
+    list_for_each_safe(curr, next, cache_expire) {
+        curr_item = list_entry(curr, pcache_cache_item, hash);
+        next_item = list_entry(next, pcache_cache_item, hash);
+        if (next_item != NULL && next_item->expire < new_item->expire) {
+            continue;
+        }
+        break;
+    }
+
+    if (curr_item->expire > new_item->expire) {
+        list_add_tail(&new_item->hash, &curr_item->hash);
+    }else{
+        list_add(&new_item->hash, &curr_item->hash);
+    }
+
+    return true;
+}
+
 
 PHP_FUNCTION (pcache_set) {
     if (!cache_enable) {
@@ -326,7 +368,7 @@ PHP_FUNCTION (pcache_set) {
     }
 
     if (expire > 0) {
-        list_add(&item->hash, cache_expire);
+        pcache_add_to_expire(item);
     }
 
     ncx_shmtx_unlock(cache_lock);
@@ -374,6 +416,7 @@ PHP_FUNCTION (pcache_get) {
 
     /* expire */
     if (item->expire > 0 && item->expire <= now) {
+        list_del(&item->hash);
         storage_free(item->data_ptr, item->data_len);
         storage_free(item, sizeof(struct pcache_cache_item));
         trie_insert(cache_trie, key, NULL);
@@ -426,9 +469,9 @@ PHP_FUNCTION (pcache_del) {
         RETURN_FALSE;
     }
 
+    list_del(&item->hash);
     storage_free(item->data_ptr, item->data_len);
     storage_free(item, sizeof(struct pcache_cache_item));
-
     bool r_val = 0 == trie_insert(cache_trie, key, NULL);
 
     ncx_shmtx_unlock(cache_lock);
@@ -444,6 +487,7 @@ int visitor_search(const char *key, void *data, void *arg) {
 
     /* expire */
     if (item->expire > 0 && item->expire <= now) {
+        list_del(&item->hash);
         storage_free(item->data_ptr, item->data_len);
         storage_free(item, sizeof(struct pcache_cache_item));
         trie_insert(cache_trie, key, NULL);
