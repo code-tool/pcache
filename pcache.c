@@ -242,10 +242,10 @@ PHP_MINFO_FUNCTION (pcache) {
 
 void pcache_try_run_gc() {
     pcache_cache_item *item;
-    struct list_head *curr;
+    struct list_head *curr, *prev;
     long now = (long) time(NULL);
 
-    list_for_each(curr, cache_expire) {
+    list_for_each_prev_safe(curr, prev, cache_expire) {
         item = list_entry(curr, pcache_cache_item, hash);
 
         if (item->expire > 0 && item->expire <= now) {
@@ -294,7 +294,7 @@ PHP_FUNCTION (pcache_set) {
 
     ncx_shmtx_lock(cache_lock);
 
-    //pcache_try_run_gc();
+    pcache_try_run_gc();
 
     shared_val = storage_malloc(val_len);
     if (!shared_val) {
@@ -325,9 +325,9 @@ PHP_FUNCTION (pcache_set) {
         RETURN_FALSE;
     }
 
-//    if (expire > 0) {
-//        list_add(&item->hash, cache_expire);
-//    }
+    if (expire > 0) {
+        list_add(&item->hash, cache_expire);
+    }
 
     ncx_shmtx_unlock(cache_lock);
 
